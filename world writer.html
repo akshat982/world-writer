@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worldwriter City</title>
+<style>
+  body{margin:0;background:#0b1020;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh}
+  #ui{position:fixed;left:12px;right:12px;bottom:12px;background:#121831;
+      border:1px solid #2b3358;border-radius:14px;padding:12px}
+  h1{margin:0 0 8px;font-size:20px}
+  textarea{width:100%;height:80px;background:#0a0e1d;color:#fff;border:1px solid #2b3358;
+           border-radius:10px;padding:10px;font-size:16px;resize:none}
+  .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  button{background:#7c6cff;color:#10102a;border:0;border-radius:8px;
+         padding:10px 14px;font-weight:700;cursor:pointer}
+  button.gray{background:#262c48;color:#fff}
+  #memory{max-height:120px;overflow:auto;margin-top:10px;font-size:14px}
+  .memory-item{padding:6px 0;border-bottom:1px solid #2b3358}
+  #status{color:#b9b0ff;font-size:14px;margin-top:6px;min-height:18px}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <h1>Worldwriter City</h1>
+
+  <textarea id="box" placeholder="Write anything, then press Enter. Example: 3 purple dragons, a castle, flying cars, a chocolate mountain."></textarea>
+
+  <div class="row">
+    <button id="create">Create · Enter ↵</button>
+    <button id="erase" class="gray">Erase planet memory</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="memory"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const box = document.getElementById("box");
+const memoryBox = document.getElementById("memory");
+const statusBox = document.getElementById("status");
+
+let things = [];
+let memories = [];
+let time = 0;
+
+function resize(){
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+addEventListener("resize", resize);
+resize();
+
+/* Save and load this planet's memory */
+function save(){
+  localStorage.setItem("worldwriter-city", JSON.stringify({
+    things,
+    memories
+  }));
+}
+
+function load(){
+  try{
+    const data = JSON.parse(localStorage.getItem("worldwriter-city") || "{}");
+    things = data.things || [];
+    memories = data.memories || [];
+  }catch(e){
+    things = [];
+    memories = [];
+  }
+  showMemory();
+}
+load();
+
+function showMemory(){
+  memoryBox.innerHTML = "";
+
+  if(memories.length === 0){
+    memoryBox.innerHTML = "<div class='memory-item'>No memories yet.</div>";
+    return;
+  }
+
+  memories.forEach((m, i) => {
+    const div = document.createElement("div");
+    div.className = "memory-item";
+    div.textContent = (i + 1) + ". " + m;
+    memoryBox.appendChild(div);
+  });
+}
+
+/* Turn your words into objects */
+function makeThing(text){
+  const lower = text.toLowerCase();
+
+  let type = "custom";
+  if(lower.includes("dragon")) type = "dragon";
+  else if(lower.includes("dinosaur")) type = "dinosaur";
+  else if(lower.includes("castle")) type = "castle";
+  else if(lower.includes("house")) type = "house";
+  else if(lower.includes("car")) type = "car";
+  else if(lower.includes("rocket") || lower.includes("spaceship")) type = "rocket";
+  else if(lower.includes("tree")) type = "tree";
+  else if(lower.includes("person") || lower.includes("people")) type = "person";
+  else if(lower.includes("cat")) type = "cat";
+  else if(lower.includes("dog")) type = "dog";
+  else if(lower.includes("bird")) type = "bird";
+  else if(lower.includes("mountain")) type = "mountain";
+  else if(lower.includes("cake") || lower.includes("food")) type = "food";
+
+  let color = "#8fd3ff";
+  if(lower.includes("red")) color = "#ff6b6b";
+  else if(lower.includes("blue")) color = "#6bb8ff";
+  else if(lower.includes("green")) color = "#7ce89a";
+  else if(lower.includes("yellow")) color = "#ffe76c";
+  else if(lower.includes("purple")) color = "#b98cff";
+  else if(lower.includes("pink")) color = "#ff9ad4";
+  else if(lower.includes("black")) color = "#555a75";
+  else if(lower.includes("white")) color = "#f2f2ff";
+  else if(lower.includes("gold")) color = "#ffd166";
+
+  const flying =
+    lower.includes("fly") ||
+    lower.includes("flying") ||
+    lower.includes("float") ||
+    lower.includes("sky");
+
+  const big = lower.includes("giant") || lower.includes("huge") || lower.includes("big");
+  const small = lower.includes("tiny") || lower.includes("small");
+
+  const numberMatch = text.match(/\d+/);
+  const count = numberMatch ? Math.min(20, Number(numberMatch[0])) : 1;
+
+  const made = [];
+
+  for(let i = 0; i < count; i++){
+    made.push({
+      text: text,
+      type: type,
+      color: color,
+      flying: flying,
+      size: big ? 1.6 : small ? 0.6 : 1,
+      x: 80 + Math.random() * (innerWidth - 160),
+      y: flying ? 120 + Math.random() * 180 : 0,
+      seed: Math.random() * 1000
+    });
+  }
+
+  return made;
+}
+
+/* Create what you wrote */
+function create(){
+  const text = box.value.trim();
+
+  if(!text){
+    statusBox.textContent = "Write something first.";
+    return;
+  }
+
+  const made = makeThing(text);
+  things.push(...made);
+  memories.push(text);
+
+  save();
+  showMemory();
+
+  box.value = "";
+  statusBox.textContent = "Created " + made.length +
+    (made.length === 1 ? " thing" : " things") + " in the city.";
+}
+
+/* Erase everything on this planet */
+function erase(){
+  if(!confirm("Erase every creation and memory on this planet?")) return;
+
+  things = [];
+  memories = [];
+  save();
+  showMemory();
+
+  statusBox.textContent = "This planet’s memory has been erased.";
+}
+
+document.getElementById("create").onclick = create;
+document.getElementById("erase").onclick = erase;
+
+box.addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey){
+    e.preventDefault();
+    create();
+  }
+});
+
+/* Drawing helpers */
+function circle(x, y, r, color){
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function rect(x, y, w, h, color){
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+/* Draw one created thing */
+function drawThing(t){
+  const bob = t.flying ? Math.sin(time * 0.03 + t.seed) * 12 : 0;
+  const x = t.x;
+  const y = (t.flying ? t.y : groundY(x) - 10) + bob;
+  const s = t.size;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+
+  ctx.fillStyle = t.color;
+  ctx.strokeStyle = t.color;
+  ctx.lineWidth = 4;
+
+  if(t.type === "dragon"){
+    circle(0, -30, 22, t.color);
+    circle(28, -48, 13, t.color);
+    ctx.fillRect(-18, -12, 9, 18);
+    ctx.fillRect(10, -12, 9, 18);
+  }
+  else if(t.type === "dinosaur"){
+    ctx.fillRect(-35, -45, 70, 35);
+    circle(35, -55, 18, t.color);
+    ctx.fillRect(-25, -10, 10, 15);
+    ctx.fillRect(15, -10, 10, 15);
+  }
+  else if(t.type === "castle"){
+    rect(-35, -75, 70, 75, t.color);
+    rect(-50, -100, 22, 100, t.color);
+    rect(28, -100, 22, 100, t.color);
+    rect(-10, -30, 20, 30, "#222");
+  }
+  else if(t.type === "house"){
+    rect(-30, -45, 60, 45, t.color);
+    ctx.beginPath();
+    ctx.moveTo(-40, -45);
+    ctx.lineTo(0, -80);
+    ctx.lineTo(40, -45);
+    ctx.fill();
+  }
+  else if(t.type === "car"){
+    rect(-35, -25, 70, 20, t.color);
+    rect(-20, -40, 40, 18, t.color);
+    circle(-20, -5, 9, "#111");
+    circle(20, -5, 9, "#111");
+  }
+  else if(t.type === "rocket"){
+    ctx.beginPath();
+    ctx.moveTo(0, -55);
+    ctx.lineTo(20, 0);
+    ctx.lineTo(-20, 0);
+    ctx.fill();
+    circle(0, -25, 8, "#fff");
+  }
+  else if(t.type === "tree"){
+    rect(-5, -45, 10, 45, "#6b4423");
+    circle(0, -60, 28, t.color);
+  }
+  else if(t.type === "person"){
+    circle(0, -45, 11, t.color);
+    rect(-10, -32, 20, 25, t.color);
+    rect(-12, -7, 8, 12, t.color);
+    rect(4, -7, 8, 12, t.color);
+  }
+  else if(t.type === "cat" || t.type === "dog"){
+    circle(0, -20, 15, t.color);
+    circle(18, -28, 8, t.color);
+    rect(-14, -8, 7, 12, t.color);
+    rect(8, -8, 7, 12, t.color);
+  }
+  else if(t.type === "bird"){
+    ctx.beginPath();
+    ctx.moveTo(-25, -20);
+    ctx.lineTo(0, -35);
+    ctx.lineTo(25, -20);
+    ctx.lineTo(0, -12);
+    ctx.fill();
+  }
+  else if(t.type === "mountain"){
+    ctx.beginPath();
+    ctx.moveTo(-60, 0);
+    ctx.lineTo(0, -100);
+    ctx.lineTo(60, 0);
+    ctx.fill();
+  }
+  else if(t.type === "food"){
+    rect(-30, -35, 60, 35, t.color);
+    rect(-30, -42, 60, 10, "#fff0d6");
+  }
+  else{
+    /* Anything else becomes a glowing custom creation */
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 25;
+    ctx.beginPath();
+    ctx.moveTo(0, -55);
+    ctx.lineTo(30, -20);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(-30, -20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  /* Label */
+  ctx.font = "12px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(0,0,0,.65)";
+  const label = t.text.length > 40 ? t.text.slice(0, 37) + "..." : t.text;
+  const width = ctx.measureText(label).width;
+  ctx.fillRect(-width / 2 - 6, 8, width + 12, 20);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(label, 0, 22);
+
+  ctx.restore();
+}
+
+/* Ground height */
+function groundY(x){
+  return innerHeight * 0.72 +
+    Math.sin(x * 0.008) * 12 +
+    Math.sin(x * 0.02) * 5;
+}
+
+/* Draw the world */
+function draw(){
+  time++;
+
+  /* Sky */
+  const sky = ctx.createLinearGradient(0, 0, 0, innerHeight);
+  sky.addColorStop(0, "#101a3d");
+  sky.addColorStop(0.6, "#26356b");
+  sky.addColorStop(1, "#4a3d7a");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, innerWidth, innerHeight);
+
+  /* Stars */
+  for(let i = 0; i < 90; i++){
+    const x = (i * 137) % innerWidth;
+    const y = (i * 73) % (innerHeight * 0.55);
+    ctx.fillStyle = "rgba(255,255,255," + (0.25 + Math.abs(Math.sin(time * 0.01 + i)) * 0.5) + ")";
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  /* Moon */
+  circle(innerWidth * 0.82, 90, 38, "#f2f0ff");
+
+  /* Far city buildings */
+  for(let i = 0; i < 30; i++){
+    const x = i * 90 - 40;
+    const h = 60 + ((i * 53) % 130);
+    rect(x, groundY(x) - h, 55, h, "#1b2247");
+
+    for(let wy = groundY(x) - h + 10; wy < groundY(x) - 10; wy += 18){
+      for(let wx = x + 8; wx < x + 45; wx += 14){
+        if((wx + wy + i) % 3 === 0){
+          rect(wx, wy, 5, 7, "#ffd980");
+        }
+      }
+    }
+  }
+
+  /* Ground */
+  ctx.beginPath();
+  ctx.moveTo(0, innerHeight);
+
+  for(let x = 0; x <= innerWidth; x += 10){
+    ctx.lineTo(x, groundY(x));
+  }
+
+  ctx.lineTo(innerWidth, innerHeight);
+  ctx.closePath();
+  ctx.fillStyle = "#22304f";
+  ctx.fill();
+
+  /* Created things */
+  things.forEach(drawThing);
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
